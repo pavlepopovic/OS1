@@ -1,9 +1,10 @@
 /*
  * queue.cpp
  *
- *  Created on: May 16, 2018
+ *  Created on: Aug 23, 2018
  *      Author: OS1
  */
+
 #include "queue.h"
 
 void Queue::put (PCB* pcb) {
@@ -29,9 +30,8 @@ PCB* Queue::get () {
 	if (head == NULL) tail=NULL;
 	old->blockedPCB=NULL;
 	old->next=NULL;
-	//locking ?
+
 	delete old;
-	//unlocking ?
+
 	return ret;
 }
-

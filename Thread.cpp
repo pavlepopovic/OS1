@@ -1,58 +1,162 @@
-#include <iostream.h>
-#include "thread.h"
-#include "pcb.h"
-#include "system.h"
-#include "symbols.h"
-
-/* from symbols.h
+/*
+ * thread.cpp
  *
+ *  Created on: Aug 20, 2018
+ *      Author: OS1
  */
-Thread::Thread(StackSize size, Time timeSlice) {
-	if (size <= maxStackSize)mypcb = new PCB (size,timeSlice,this);
-	else mypcb= new PCB (maxStackSize,timeSlice,this);
-}
-Thread::~Thread() {
-	waitToComplete();
-	delete mypcb;
-	mypcb=NULL;
-}
-void Thread::waitToComplete () { //modify this !
+#include "thread.h"
+#include "System.h"
+#include "symbols.h"
+#include "PCB.h"
+#include <dos.h>
+
+void dispatch () {
 #ifndef BCC_BLOCK_IGNORE
-	lock
-	if (this -> mypcb == NULL || this->mypcb->state == PCB::FINISHED /*|| this->mypcb->state == PCB::NEW*/) {
-		//completed thread
-		unlock
-		return;
+	asm {
+		push dx
+		mov dx, 0h
+		int 61h
+		pop dx
 	}
-	PCB::WaitingThreads *nw = new PCB::WaitingThreads ((PCB*)System::running); //running  thread becomes blocked
-	if (this->mypcb->WaitingThreadsHead == NULL) {
-		this->mypcb->WaitingThreadsHead=this->mypcb->WaitingThreadsTail=nw;
-	}
-	else {
-		this->mypcb->WaitingThreadsTail->next=nw;
-		this->mypcb->WaitingThreadsTail=nw;
-	}
-	System::running->state=PCB::BLOCKED;
-	unlock
 #endif
-	//razmotriti lockove i unlockove
-	dispatch () ; //must take care for blocked thread !
 }
-void Thread::start () {
-	if (this->mypcb != NULL && this->mypcb->state == PCB::NEW) {
+
+Thread::Thread(StackSize stacksize, Time timeSlice) {
+	System::softLock();
+	Thread::threadConstructorArgs* args = new threadConstructorArgs(stacksize,timeSlice,this);
+	System::softUnlock();
+
 #ifndef BCC_BLOCK_IGNORE
-		lock
-		this->mypcb->create_context();
-		unlock
-#endif
+	unsigned argSeg = FP_SEG(args);
+	unsigned argOff = FP_OFF (args);
+
+	asm  {
+		push dx
+		push ax
+		push bx
+
+		mov dx, 1h
+		mov ax, argSeg
+		mov bx, argOff
+
+		int 61h
+
+		pop bx
+		pop ax
+		pop dx
 	}
+#endif
+
+	System::softLock();
+	delete args;
+	args = NULL;
+	System::softUnlock();
+
 
 }
-void dispatch () {
-	System::running->PCB_dispatch();
+
+Thread::~Thread() {
+	unsigned id = this->pcbID;
+
+	if (System::runningKernelThread != NULL) {
+
+	#ifndef BCC_BLOCK_IGNORE
+		asm {
+			push dx
+			push cx
+
+			mov dx, 5h
+			mov cx, id
+
+			int 61h
+
+			pop cx
+			pop dx
+		}
+
+
+	#endif
+	} else {
+		delete PCB::getPCBbyID(this->pcbID);
+	}
 }
+
+void Thread::start() {
+
+	unsigned id = this->pcbID;
+
+#ifndef BCC_BLOCK_IGNORE
+	asm {
+		push dx
+		push cx
+
+		mov dx, 2h
+		mov cx, id
+
+		int 61h
+
+		pop cx
+		pop dx
+	}
+#endif
+
+}
+
+void Thread::threadWrapper(Thread* runningThread) {
+	runningThread->run();
+	System::exit_thread();
+}
+
+
+
+void Thread::waitToComplete() {
+	unsigned id = this->pcbID;
+#ifndef BCC_BLOCK_IGNORE
+	asm {
+		push dx
+		push cx
+
+		mov dx, 3h
+		mov cx, id
+
+		int 61h
+
+		pop cx
+		pop dx
+
+	}
+
+
+#endif
+}
+
 
 void Thread::sleep(Time timeToSleep) {
-	System::addSleepingThread(timeToSleep+1);
+	unsigned toSleep = timeToSleep+1;
+
+#ifndef BCC_BLOCK_IGNORE
+	asm {
+		push dx
+		push ax
+
+		mov dx, 4h
+		mov ax, toSleep
+
+		int 61h
+
+
+		pop ax
+		pop dx
+	}
+
+#endif
 }
+
+
+
+
+
+
+
+
 
